@@ -1,0 +1,13 @@
+FROM deposit-withdraw-service-cached as builder
+
+ADD . /app/
+WORKDIR /app
+RUN go mod download
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o demoApp .
+
+FROM alpine
+
+WORKDIR /app/
+COPY --from=builder /app/demoApp .
+ADD withdraw_deposit.abi /app/withdraw_deposit.abi
+CMD ["/app/demoApp"]

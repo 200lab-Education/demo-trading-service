@@ -1,0 +1,49 @@
+package transport
+
+import (
+	goservice "github.com/200Lab-Education/go-sdk"
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+	"net/http"
+	"trading-service/common"
+	assetstore "trading-service/modules/assets/storage"
+	"trading-service/modules/fiattx/biz"
+	"trading-service/modules/fiattx/model"
+	"trading-service/modules/fiattx/storage"
+	mstTxStore "trading-service/modules/mastertx/storage"
+	"trading-service/plugin/locker"
+)
+
+func UserUpdateStatusTx(sc goservice.ServiceContext) func(*gin.Context) {
+	return func(c *gin.Context) {
+		//db := sc.MustGet(common.PluginMainDB).(*gorm.DB)
+		lck := sc.MustGet(common.PluginMutexLock).(locker.Locker)
+		requester := c.MustGet(common.CurrentUser).(common.Requester)
+
+		id, err := common.FromBase58(c.Param("id"))
+
+		if err != nil {
+			panic(common.ErrInvalidRequest(err))
+		}
+
+		var updateData model.FiatDWUpdate
+
+		if err := c.ShouldBind(&updateData); err != nil {
+			panic(err)
+		}
+
+		st := c.Param("status")
+		updateData.Status = &st
+
+		store := storage.NewSQLStore(sc.MustGet(common.PluginMainDB).(*gorm.DB))
+		assetStore := assetstore.NewSQLStore(sc.MustGet(common.PluginMainDB).(*gorm.DB))
+		masterTxStore := mstTxStore.NewSQLStore(sc.MustGet(common.PluginMainDB).(*gorm.DB))
+		business := biz.NewUpdateStBiz(store, lck, assetStore, masterTxStore, requester)
+
+		if err := business.UpdateStatus(c.Request.Context(), int(id.GetLocalID()), &updateData); err != nil {
+			panic(err)
+		}
+
+		c.JSON(http.StatusOK, common.SimpleSuccessResponse(true))
+	}
+}
